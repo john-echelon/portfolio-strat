@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Runtime;
 
 namespace PortfolioStrat.Models;
 
@@ -15,9 +16,9 @@ class Program
 	}
 	/*
     Future Value of an Annuity formula (ordinary annuity):
-    C[((1+r/n)^nt) - 1/r]
+    C[((1+r/n)^nt) - 1/(r/n)]
     Future Value of an Annuity Due formula:
-    C[((1+r/n)^nt) - 1/r] * (1+r/n)
+    C[((1+r/n)^nt) - 1/(r/n)] * (1+r/n)
 
 		isOrdinaryAnnuity: pays interests at the end of a particular period.
   */
@@ -29,44 +30,45 @@ class Program
 	}
 	static void Main(string[] args)
 	{
-		/*
-		// TODO: Reuse for unit tests
-		CompoundingStrategy strat1 = new CompoundingStrategy
+		var amount = 100000.0;
+		var strategies = GenerateStrategies(amount);
+		foreach (var strat in strategies)
 		{
-			Principal = 10000,
-			Interval = 12,
-			Contributions = 10000 / (12 * 10),
-			Principal2 = 10000,
-			Rate = 0.15,
-			Years = 10,
-			rate_rec_gain = 3.00,
-			rate_rec_drop = .50,
-			years_rec_recover = 0.5,
-			IsOrdinaryAnnuity = true,
-			IncludeRecessionStrategy = true,
-		};
-		CalculateStrategy(strat1);
-		*/
-		var strategies = GenerateStrategies();
-		foreach (var strat in strategies) {
-			// Console.WriteLine("Strategy Allocations: {0:##,#.00} {1:#,##.00} {2:#,##.00}", strat.Principal, strat.Principal2, strat.Contributions);
+			// Console.WriteLine("Strategy Allocations: {0:##,#.00} {1:#,##.00} {2:#,##.00}", strat.Principal, strat.Principal2, strat\.Contribution);
 			CalculateStrategy(strat, false);
 		}
 		var result = strategies.OrderByDescending(s => s.max_balance).ToList();
-		Console.WriteLine("Strategy Allocations:");
-		Console.WriteLine("Principal | Lump Sum | Contribution | Rate | Years | Worst | Best\n");
-		foreach (var strat in result) {
-			Console.WriteLine("{0,10:,0.00} {1,15:,0.00} {2,15:0,0.00} {3,15:,0.00} {4,10:0} {5,15:,0.00} {6,15:,0.00}",
-				strat.Principal, strat.Principal2, strat.Contributions, strat.Rate, strat.Years, strat.min_balance, strat.max_balance);
+		var single = result[0];
+
+		Console.WriteLine("Portfolio setup:");
+		Console.WriteLine("Total amount allocated: {0:0,0.00}", amount);
+		Console.WriteLine("Timespan (y): {0:,0.00}", single.Period);
+		Console.WriteLine("Rate: {0:,0.0000}", single.Rate);
+		Console.WriteLine("Contribution Interval: {0:,0.00}", single.Interval2);
+		Console.WriteLine("Drop % during recession: {0:,0.00}", single.rec_drop_pct * 100);
+		Console.WriteLine("Time to recover (y): {0:0.00}", single.timespan_recovery);
+
+		Console.WriteLine("\nStrategy Allocations:");
+		var captionHeader = "#    |  Principal               |    Contribution               |        Lump Sum               |           Worst  |          Best";
+		Console.WriteLine(captionHeader);
+		Console.WriteLine(new String('-', captionHeader.Length));
+		var i = 0;
+		foreach (var strat in result)
+		{
+			var contribution = strat.Contribution * strat.Interval2 * strat.Period;
+			Console.WriteLine("{0:000}  | {1,10:0,0.00}  {2,10:0.00}%  | {3,15:0,0.00}  {4,10:0.00}%  | {5,15:0,0.00}  {6,10:0.00}%  | {7,15:0,0.00}  | {8,15:0,0.00}",
+				i++, strat.Principal, strat.Principal / amount * 100, contribution, contribution / amount * 100, strat.Principal2, strat.Principal2 / amount * 100, strat.min_balance, strat.max_balance);
 		}
-		var optimal = result[0];
-		Console.WriteLine("\nShowing yearly breakdown for Optimal Allocation: {0:,0.00} {1:,0#.00} {2:,0.00}",
-			optimal.Principal, optimal.Principal2, optimal.Contributions);
-		CalculateStrategy(optimal, true);
+		var index = result.Count - 1;
+		var selection = result[index];
+		selection.IncludeRecessionStrategy = false;
+		Console.WriteLine("\nShowing yearly breakdown for Allocation: {0:,0}", index);
+		CalculateStrategy(selection, true);
 	}
 	private static List<Models.InvestmentStrategy> GenerateStrategies(double amount = 10000)
 	{
-		var allocationPcts = new double[] { 1.00, .75, .50, .33, .25, 0.0 };
+		var allocationPcts = new double[] { 1.00, .80, .75, .666666, .60, .50, .40, .333333, .30, .25, .20, .10, 0.0 };
+		// var allocationPcts = new double[] { 1.00, .75, .666666, .50, .333333, .25, 0.0 };
 		var strats = new List<InvestmentStrategy>();
 		var allocations = new HashSet<Tuple<double, double, double>>();
 		// Generate set allocations of principal, contributions, lumpsum:
@@ -77,22 +79,26 @@ class Program
 				var alloc1 = amount * allocationPcts[i];
 				var alloc2 = (amount - alloc1) * allocationPcts[j];
 				var alloc3 = amount - alloc1 - alloc2;
-				var allocs = new Tuple<double, double, double> (alloc1, alloc2, alloc3);
+				var allocs = new Tuple<double, double, double>(alloc1, alloc2, alloc3);
 				allocations.Add(allocs);
 			}
 		}
-		foreach(var s in allocations) {
+		var duration = 10;
+		var interval2 = 12;
+		foreach (var s in allocations)
+		{
 			// Console.WriteLine("{0:##,#.00} {1:#,##.00} {2:#,##.00} {3:#,##.00}", s.Item1, s.Item2, s.Item3, s.Item1 + s.Item2 + s.Item3);
 			var strat = new InvestmentStrategy
 			{
 				Principal = s.Item1,
-				Interval = 12,
-				Contributions = s.Item2 / (12 * 10),
+				Interval = 1,
+				Interval2 = interval2,
+				Contribution = s.Item2 / (interval2 * duration),
 				Principal2 = s.Item3,
 				Rate = 0.15,
-				Years = 10,
-				rate_rec_drop = 0.5,
-				timespan_recovery = 1,
+				Period = duration,
+				rec_drop_pct = 0.5,
+				timespan_recovery = 0.5,
 				IsOrdinaryAnnuity = true,
 				IncludeRecessionStrategy = true,
 				min_balance = double.MaxValue
@@ -102,74 +108,120 @@ class Program
 		return strats;
 	}
 
-	private static void CalculateStrategy(InvestmentStrategy strat1, bool verbose = false)
+	public static void CalculateStrategy(InvestmentStrategy strat1, bool verbose = false)
 	{
+		var captionHeader2 = "Period |    FV Principal  | FV Contributions |         Balance  |       Rate";
 		if (!strat1.IncludeRecessionStrategy)
 		{
 			if (verbose)
-				Console.WriteLine("Period | Accrued Principal | Accrued Contributions | Balance\n");
-			for (var i = 1; i <= strat1.Years; i++)
-			{
-				var a = CompoundInterestCalculator(strat1.Principal, strat1.Rate, i);
-				var contribs = AnnuityCalculator(strat1.Contributions, strat1.Rate, i, strat1.Interval, strat1.IsOrdinaryAnnuity);
-				if (verbose)
-					Console.WriteLine("{0:00} {1:##,#.00} {2:#,##.00} {3:#,##.00}", i, a, contribs, a + contribs);
-				if (i == strat1.Years)
-					strat1.max_balance = Math.Max(strat1.max_balance, a + contribs);
-					strat1.min_balance = Math.Min(strat1.min_balance, a + contribs);
-			}
+				Console.WriteLine($"\n{ captionHeader2}");
+			var start_principal = strat1.Principal;
+			var contribution = strat1.Contribution;
+			var rate = strat1.Rate;
+			var t_remaining = strat1.Period;
+
+			var results = CalculateFV(strat1, verbose, start_principal, contribution, rate, t_remaining);
+			var lastResult = results[results.Count - 1];
+			strat1.min_balance = strat1.max_balance = lastResult.Item2 + lastResult.Item3;
 			return;
 		}
-		// i: recessionary period
-		for (var i = 1; i <= strat1.Years; i++)
+		// i: designates the recessionary period; precision rounded by year
+		for (var i = 0; i < strat1.Period; i++)
 		{
-			double a = strat1.Principal;
-			double contribs = 0;
-
-			// Time: Pre Recession
 			if (verbose)
-				Console.WriteLine("Period | Accrued Principal | Accrued Contributions | Balance | Rate | Time Elapsed\n");
-			for (var j = 1; j < i; j++)
 			{
-				a = CompoundInterestCalculator(strat1.Principal, strat1.Rate, j);
-				contribs = AnnuityCalculator(strat1.Contributions, strat1.Rate, j, strat1.Interval, strat1.IsOrdinaryAnnuity);
-				if (verbose)
-					Console.WriteLine("{0:00} {1,15:0,0.00} {2,15:0,0.00} {3,15:0,0.00}", j, a, contribs, a + contribs);
+				Console.WriteLine($"\n{captionHeader2}\n{new String('-', captionHeader2.Length)}");
 			}
-
-			// Intermittent period for Recession
-			var balance_before_rec = a + contribs;
-			// Account for recessionary period when it exceeds strategy timespan; allow calculators to stop at end of strategy timespan
-			var timespan_rec = Math.Min(strat1.timespan_recovery, strat1.Years - i + 1);
-			var rec_rate = strat1.Interval*(Math.Pow(1.0/(1.0 * strat1.rate_rec_drop), 1 / (strat1.Interval * strat1.timespan_recovery))-1);
-			a = balance_before_rec * strat1.rate_rec_drop + strat1.Principal2;
-			a = CompoundInterestCalculator(a, rec_rate, timespan_rec);
-			// Note new starting principal includes pre-recession balance from pre-recession contributions; accrued contributions reset to 0
-			contribs = AnnuityCalculator(strat1.Contributions, rec_rate, timespan_rec, strat1.Interval, strat1.IsOrdinaryAnnuity);
+			// Period: Pre Recession
+			var start_principal = strat1.Principal;
+			double contribution = strat1.Contribution;
+			var rate = strat1.Rate;
+			double t_period = Math.Min(strat1.Period, i);
+			double t_elapsed = t_period;
 
 			if (verbose)
-				Console.WriteLine("{0:00} {1,15:0,0.00} {2,15:0,0.00} {3,15:0,0.00} {4,10:0.00} {5,10:0.00} <- Recessionary period", i, a, contribs,a + contribs, rec_rate, timespan_rec);
-			// get final balance if recession occurs in the last period
-			if (strat1.Years - i + 1 - strat1.timespan_recovery <= 0) {
-				strat1.max_balance = Math.Max(strat1.max_balance, a + contribs);
-				strat1.min_balance = Math.Min(strat1.min_balance, a + contribs);
+			{
+				Console.WriteLine("Period: Pre Recession. Timespan {0:0.00}", t_period);
+				// Console.WriteLine(new String('-', captionHeader2.Length));
 			}
 
-			// Time: Post Recession
+			var results = new List<Tuple<double, double, double>>();
+			Tuple<double, double, double> lastResult = new Tuple<double, double, double>(0.0, 0.0, 0.0);
+			results = CalculateFV(strat1, verbose, start_principal, contribution, rate, t_period);
+
+			if (verbose)
+			{
+				Console.WriteLine(new String('-', captionHeader2.Length));
+			}
+
+			// Intermittent period of Recession
+			// New starting principal: pre-recession fv_principal fv_contributions; accrued contributions reset to 0
+			// Introduce lump sum contribution to principal
+			if (results.Count == 0)
+				start_principal = strat1.Principal * strat1.rec_drop_pct + strat1.Principal2;
+			else
+			{
+				lastResult = results[results.Count - 1];
+				start_principal = (lastResult.Item2 + lastResult.Item3) * strat1.rec_drop_pct + strat1.Principal2;
+			}
+			contribution = strat1.Contribution;
+			rate = strat1.Interval * (Math.Pow(1.0 / (1.0 * strat1.rec_drop_pct), 1 / (strat1.Interval * strat1.timespan_recovery)) - 1);
+			t_period = Math.Min(strat1.timespan_recovery, strat1.Period - t_elapsed);
+			t_elapsed += t_period;
+
+			if (verbose)
+			{
+				Console.WriteLine("Intermittent period of recession. Timespan {0:0.00}", t_period);
+				// Console.WriteLine(new String('-', captionHeader2.Length));
+			}
+
+			results.AddRange(CalculateFV(strat1, verbose, start_principal, contribution, rate, t_period));
+
+			if (verbose)
+			{
+				Console.WriteLine(new String('-', captionHeader2.Length));
+			}
+			// Period: Post Recession
 			// Note new starting principal includes contributions during intermittent period; accrued contributions reset to 0 
-			var min_balance = Double.MaxValue;
-			for (var j = i + 1; j <= 1 + strat1.Years - strat1.timespan_recovery; j++)
+			lastResult = results[results.Count - 1];
+			start_principal = lastResult.Item2 + lastResult.Item3;
+			contribution = strat1.Contribution;
+			rate = strat1.Rate;
+			t_period = strat1.Period - t_elapsed;
+
+			if (verbose)
 			{
-				var a2 = CompoundInterestCalculator(a + contribs, strat1.Rate, j - i);
-				var contribs2 = AnnuityCalculator(strat1.Contributions, strat1.Rate, j - i, strat1.Interval, strat1.IsOrdinaryAnnuity);
-				if (verbose)
-					Console.WriteLine("{0:00} {1,15:0,0.00} {2,15:0,0.00} {3,15:0,0.00}", j, a2, contribs2, a2 + contribs2);
-				// get final balance
-				strat1.max_balance = Math.Max(strat1.max_balance, a2 + contribs2);
-				// if (j == strat1.Years)
-				min_balance = a2 + contribs2;
+				Console.WriteLine("Period: Post Recession. Timespan {0:0.00}", t_period);
+				// Console.WriteLine(new String('-', captionHeader2.Length));
 			}
-			strat1.min_balance = Math.Min(strat1.min_balance, min_balance);
+
+			results.AddRange(CalculateFV(strat1, verbose, start_principal, contribution, rate, t_period));
+			lastResult = results[results.Count - 1];
+			strat1.min_balance = Math.Min(strat1.min_balance, lastResult.Item2 + lastResult.Item3);
+			strat1.max_balance = Math.Max(strat1.max_balance, lastResult.Item2 + lastResult.Item3);
+
+			if (verbose)
+			{
+				Console.WriteLine(new String('-', captionHeader2.Length));
+			}
 		}
+	}
+
+	private static List<Tuple<double, double, double>> CalculateFV(InvestmentStrategy strat, bool verbose, double start_principal, double contribution, double rate, double t_remaining)
+	{
+		var result = new List<Tuple<double, double, double>>();
+		var t_elapsed = 0.0;
+		while (t_remaining > 0)
+		{
+			var t_interval = Math.Min(1, t_remaining);
+			t_elapsed += t_interval;
+			var fv_principal = CompoundInterestCalculator(start_principal, rate, t_elapsed, strat.Interval);
+			var fv_contributions = AnnuityCalculator(contribution, rate, t_elapsed, strat.Interval2, strat.IsOrdinaryAnnuity);
+			result.Add(new Tuple<double, double, double>(t_elapsed, fv_principal, fv_contributions));
+			if (verbose)
+				Console.WriteLine("{0:00.00}  | {1,15:0,0.00}  | {2,15:0,0.00}  | {3,15:0,0.00}  | {4,10:0.00000}", t_elapsed, fv_principal, fv_contributions, fv_principal + fv_contributions, rate);
+			t_remaining -= t_interval;
+		}
+		return result;
 	}
 }
