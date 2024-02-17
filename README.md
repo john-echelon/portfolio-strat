@@ -29,7 +29,7 @@ dotnet run
 
 ## Release History
 
-* 0.0.0
+* 0.1.0
   * Support non-intergral timespans
   * Add README
   * Clean up & prettify console output

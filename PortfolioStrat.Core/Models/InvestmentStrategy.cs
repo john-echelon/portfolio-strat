@@ -1,4 +1,4 @@
-﻿namespace PortfolioStrat.Models;
+﻿namespace PortfolioStrat.Core;
 
 public class InvestmentStrategy
 {
