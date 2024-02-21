@@ -14,6 +14,30 @@ Allocations consist of varying distributions of upfront principal, contributions
 git clone https://github.com/john-echelon/portfolio-strat.git
 ```
 
+## Setup
+
+The following examples demonstrate how to run a program in either debug or release mode.
+
+```sh
+cd portfolio-strat
+dotnet run --project=PortfolioStrat.Console
+```
+
+Use the -- delimeter to allow all arguments after this delimeter to be passed onto the application to run.
+> -c|--configuration {Debug|Release}
+
+```sh
+cd portfolio-strat/PortfolioStrat.Console
+dotnet run -c release -- --help
+```
+
+Publish as exe/binary:
+
+```sh
+cd portfolio-strat
+dotnet publish
+```
+
 ## Usage examples
 
 An investment fund allocation report, 9% annual rate of return, 10k total fund
@@ -42,14 +66,6 @@ with a max time to recover of 13.5 years after a market recessionary event:
 
 ```sh
 foliostrat -a 100000 -t 33 --time-to-recover 13.5
-```
-
-
-## Setup
-
-```sh
-cd PortfolioStrat.Console
-dotnet run
 ```
 
 ## Release History
