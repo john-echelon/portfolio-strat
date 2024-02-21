@@ -1,13 +1,88 @@
 ﻿using System.Collections.ObjectModel;
 using System.Runtime;
 using PortfolioStrat.Core;
+using CommandLine;
+using CommandLine.Text;
+using Microsoft.VisualBasic;
 
 class Program
 {
-	static void Main(string[] args)
+	class AllocBase
 	{
-		var amount = 100000.0;
-		var strategies = GenerateStrategies(amount);
+		[Option(
+			'a', "amount",
+			Default = 10000,
+			HelpText = "Total [a]mount to allocate.")]
+		public double Amount { get; set; }
+
+		[Option('t', "timespan", Default = 10.0, HelpText = "The [t]imespan of the investment given in years.")]
+		public double Timespan { get; set; }
+		[Option(
+			'r', "rate",
+			Default = 0.09,
+			HelpText = "The interest [r]ate of the investment.")]
+		public double Rate { get; set; }
+		[Option(
+			'c', "contrib-interval",
+			Default = 12,
+			HelpText = "The number of contributions in a given year.")]
+		public int Interval2 { get; set; }
+		[Option(
+			"include-recession",
+			Default = true,
+			HelpText = "Account for a recessionary event or market trough.")]
+		public bool IncludeRecessionStrategy { get; set; }
+		[Option(
+			"drop-pct",
+			Default = 0.47,
+			HelpText = "The drop % of the investment in the event of a recession or market trough.")]
+		public double DropPct { get; set; }
+		[Option(
+			"time-to-recover",
+			Default = 0.50,
+			HelpText = "The time to recover(y) in the event of a recession or market trough.")]
+		public double TimeToRecover { get; set; }
+	}
+
+	[Verb("alloc", HelpText = "Run allocation test cases.")]
+	class AllocOptions: AllocBase
+	{
+		[Option(
+			'b', "show-yearly-breakdown",
+			Default = -1,
+			HelpText = "Show yearly [b]reakdown for a given strategy.")]
+		public int ShowYearlyBreakdown { get; set; }
+	}
+
+	static void Main(string[] args)
+	{ 
+		var parser = new Parser(with => with.HelpWriter = null);
+		var parserResult = parser.ParseArguments<AllocOptions>(args);
+		parserResult.WithParsed((AllocOptions opts) => RunAllocations(opts))
+		.WithNotParsed(errs => DisplayHelp(parserResult, errs));
+	}
+	static void DisplayHelp<T>(ParserResult<T> result, IEnumerable<Error> errs)
+	{
+		HelpText? helpText = null;
+		if (errs.IsVersion())  //check if error is version request
+			helpText = HelpText.AutoBuild(result);
+		else
+		{
+			helpText = HelpText.AutoBuild(result, h =>
+			{
+				//configure help
+				h.AdditionalNewLineAfterOption = false;
+				h.AddPostOptionsText(PortfolioStrat.Console.HelpText.Usage);
+				return HelpText.DefaultParsingErrorsHandler(result, h);
+			}, e => e);
+		}
+		Console.WriteLine(helpText);
+	}
+
+	static int RunAllocations(AllocOptions opts)
+	{
+		var amount = opts.Amount;
+		var strategies = GenerateStrategies(opts);
 		foreach (var strat in strategies)
 		{
 			// Console.WriteLine("Strategy Allocations: {0:##,#.00} {1:#,##.00} {2:#,##.00}", strat.Principal, strat.Principal2, strat\.Contribution);
@@ -35,14 +110,19 @@ class Program
 			Console.WriteLine("{0:000}  | {1,10:0,0.00}  {2,10:0.00}%  | {3,15:0,0.00}  {4,10:0.00}%  | {5,15:0,0.00}  {6,10:0.00}%  | {7,15:0,0.00}  | {8,15:0,0.00}",
 				i++, strat.Principal, strat.Principal / amount * 100, contribution, contribution / amount * 100, strat.Principal2, strat.Principal2 / amount * 100, strat.min_balance, strat.max_balance);
 		}
-		var index = result.Count - 1;
-		var selection = result[index];
-		selection.IncludeRecessionStrategy = false;
-		Console.WriteLine("\nShowing yearly breakdown for Allocation: {0:,0}", index);
-		AllocationStrat.CalculateStrategy(selection, true);
+		if (opts.ShowYearlyBreakdown >= 0) {
+			var index = opts.ShowYearlyBreakdown;
+			var selection = result[index];
+			selection.IncludeRecessionStrategy = opts.IncludeRecessionStrategy;
+			Console.WriteLine("\nShowing yearly breakdown for Allocation: {0:,0}", index);
+			AllocationStrat.CalculateStrategy(selection, true);
+		}
+		return 0;
 	}
-	private static List<InvestmentStrategy> GenerateStrategies(double amount = 10000)
+
+	private static List<InvestmentStrategy> GenerateStrategies(AllocOptions opts)
 	{
+		var amount = opts.Amount;
 		var allocationPcts = new double[] { 1.00, .80, .75, .666666, .60, .50, .40, .333333, .30, .25, .20, .10, 0.0 };
 		// var allocationPcts = new double[] { 1.00, .75, .666666, .50, .333333, .25, 0.0 };
 		var strats = new List<InvestmentStrategy>();
@@ -59,8 +139,8 @@ class Program
 				allocations.Add(allocs);
 			}
 		}
-		var duration = 10;
-		var interval2 = 12;
+		var duration = opts.Timespan;
+		var interval2 = opts.Interval2;
 		foreach (var s in allocations)
 		{
 			// Console.WriteLine("{0:##,#.00} {1:#,##.00} {2:#,##.00} {3:#,##.00}", s.Item1, s.Item2, s.Item3, s.Item1 + s.Item2 + s.Item3);
@@ -71,12 +151,12 @@ class Program
 				Interval2 = interval2,
 				Contribution = s.Item2 / (interval2 * duration),
 				Principal2 = s.Item3,
-				Rate = 0.15,
+				Rate = opts.Rate,
 				Period = duration,
-				rec_drop_pct = 0.5,
-				timespan_recovery = 0.5,
+				rec_drop_pct = opts.DropPct,
+				timespan_recovery = opts.TimeToRecover,
 				IsOrdinaryAnnuity = true,
-				IncludeRecessionStrategy = true,
+				IncludeRecessionStrategy = opts.IncludeRecessionStrategy,
 				min_balance = double.MaxValue
 			};
 			strats.Add(strat);
